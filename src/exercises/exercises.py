@@ -6,6 +6,8 @@ Implement the TODO functions. Autograder will test them.
 from __future__ import annotations
 
 from typing import Optional
+
+from flask import request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 
@@ -13,16 +15,35 @@ from src.exercises.extensions import db
 from src.exercises.models import Student, Grade, Assignment
 
 
+
 # ===== BASIC CRUD =====
 
 def create_student(name: str, email: str) -> Student:
     """TODO: Create and commit a Student; handle duplicate email.
 
+
     If email is duplicate:
       - rollback
       - raise ValueError("duplicate email")
     """
-    raise NotImplementedError
+    data = request.get_json() or {}
+    name = data.get("name")
+    email = data.get("email")
+
+    if not name or not email:
+        return {"error": "name and email are required"}, 400
+
+    student = Student(name=name, email=email)
+    db.session.add(student)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "email must be unique"}, 409
+
+    return {"id": student.id, "name": student.name, "email": student.email}, 201
+
 
 
 def find_student_by_email(email: str) -> Optional[Student]:
@@ -37,7 +58,20 @@ def add_grade(student_id: int, assignment_id: int, score: int) -> Grade:
     If assignment doesn't exist: raise LookupError
     If duplicate grade: raise ValueError("duplicate grade")
     """
-    raise NotImplementedError
+    s = db.session.get(Student, student_id)
+    if not s:
+        return {"error": "student not found"}, 404
+
+    data = request.get_json() or {}
+    score = data.get("score")
+    if score is None:
+        return {"error": "score is required"}, 400
+
+    g = Grade(score=int(score), student=s)
+    db.session.add(g)
+    db.session.commit()
+
+    return {"id": g.id, "score": g.score, "student_id": s.id}, 201
 
 
 def average_percent(student_id: int) -> float:
@@ -121,7 +155,23 @@ def update_student_email(student_id: int, new_email: str) -> Student:
     If new email is duplicate: rollback and raise ValueError("duplicate email")
     Return the updated student.
     """
-    raise NotImplementedError
+    s = db.session.get(Student, student_id)
+    if not s:
+        return {"error": "not found"}, 404
+
+    data = request.get_json() or {}
+    if "name" in data:
+        s.name = data["name"]
+    if "email" in data:
+        s.email = data["email"]
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "update failed (possibly duplicate email)"}, 409
+
+    return {"id": s.id, "name": s.name, "email": s.email}
 
 
 def delete_student(student_id: int) -> None:
@@ -129,7 +179,14 @@ def delete_student(student_id: int) -> None:
 
     If student doesn't exist: raise LookupError
     """
-    raise NotImplementedError
+    s = db.session.get(Student, student_id)
+    if not s:
+        return {"error": "student not found"}, 404
+
+    db.session.delete(s)
+    db.session.commit()
+    return {}, 204
+
 
 
 def delete_grade(grade_id: int) -> None:
@@ -137,7 +194,13 @@ def delete_grade(grade_id: int) -> None:
 
     If grade doesn't exist: raise LookupError
     """
-    raise NotImplementedError
+    g = db.session.get(Grade, grade_id)
+    if not g:
+        return {"error": "grade not found"}, 404
+
+    db.session.delete(g)
+    db.session.commit()
+    return {}, 204
 
 
 # ===== FILTERING & FILTERING WITH AGGREGATION =====
